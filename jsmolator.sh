@@ -121,7 +121,7 @@ if [ $is_vuln = "TRUE" ];then
 	
 	showTitle "Check this before quitting" "" "1" "noNL"
 	#debug pause	
-	read pause
+	#read pause
 else
 	showTitle "This shit is not vulnerable!" "$c_error""Game over!" "1"
 fi
