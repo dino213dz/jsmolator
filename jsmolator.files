@@ -86,6 +86,11 @@
 /run/httpd.pid
 /usr/local/etc/nginx/nginx.conf
 /usr/local/nginx/conf/nginx.conf
+/var/cpanel/cpanel.config
+/etc/cpanel.config
+/var/cpanel/cpanel.config.cache
+/etc/cpanel.config.cache
+/usr/local/cpanel/logs/error_log
 /var/lib/mlocate/mlocate.db
 /var/lib/samba/account_policy.tdb
 /var/lib/samba/group_mapping.tdb
@@ -102,6 +107,7 @@
 /var/log/apache2/other_vhosts_access.log
 /var/log/apache2/facebook-access.log
 /var/log/apache2/google-access.log
+/var/log/samba/log
 /var/run/apache2/apache2.pid
 /var/run/httpd.pid
 /var/www/html/index.htm
@@ -344,3 +350,12 @@
 ../../../connection.php
 ../../connection.php
 ../connection.php
+../../../../../../../../../config-dist.php
+../../../../../../../../config-dist.php
+../../../../../../../config-dist.php
+../../../../../../config-dist.php
+../../../../../config-dist.php
+../../../../config-dist.php
+../../../config-dist.php
+../../config-dist.php
+../config-dist.php
