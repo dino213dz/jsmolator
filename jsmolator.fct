@@ -17,7 +17,6 @@ function sendRequest {
 	}
 function checkResult {
 	this_check=$(cat "$curl_output_filename" 2>/dev/null | grep --binary-file=text "root:")
-	#this_check=$(cat "$curl_output_filename" 2>&1)
 	if [ ${#this_check} -gt 0 ];then
 		echo -e "OK"
 	else
@@ -97,7 +96,6 @@ function checkFile {
 
 	}
 function gotImportantFiles {
-	#convert target domaine to folder
 	this_dl_sub_folder="$1"
 	showTitle "Checking important files" "" "2"
 	for dl_file_primary in ${target_test_files[*]};do
@@ -218,8 +216,6 @@ function listDownloadedFiles {
 	this_dl_sub_folder="$1"
 	#listing downloaded files
 	showTitle "Listing downloaded files" "" "1"
-	#ls -Al "$download_folder/$this_dl_sub_folder/"|tail -n +2|egrep -v "^[[space]]*"|sed "s/^/    | /g"
-	#filelist=$(ls -A "$download_folder/$this_dl_sub_folder/")
 	filelist=$downloaded_files_list	
 	if [ ${#filelist} -eq 0 ];then
 		showTitle "Empty list" "${c_error}Nothing was found${c_reset}${c_text}" "2" ""

