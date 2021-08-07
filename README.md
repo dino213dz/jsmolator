@@ -9,7 +9,7 @@
 - Edité le: 09.02.2020
 - Version: 1.0
 - Contact: h4ckr213dz@gmail.com
-- Web: http://chorfa.fr
+- Web: https://chorfa.fr
 
 ## Description:
 
