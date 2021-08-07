@@ -9,7 +9,7 @@
 - Edité le: 09.02.2020
 - Version: 1.0
 - Contact: h4ckr213dz@gmail.com
-- Web: http://dino213dz.free.fr
+- Web: http://chorfa.fr
 
 ## Description:
 
@@ -25,8 +25,9 @@
 
 ## Exemples:
 ### Attaque standard par ip ou par url:
-- test
-	 - test
+- sh jsmolator.sh https://testipexample.test/js/php/jsmol.php
+- sh jsmolator.sh http://123.45.67.89/jmol/php/jsmol.php
+	 
 
 ## Captures d'écran:
 ![logo](http://dino213dz.online.fr/img/screenshot/axisbrutus_2.5_screenshot.jpg "jsmolator.sh 1.0")
